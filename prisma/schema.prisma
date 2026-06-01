@@ -24,6 +24,8 @@ model Note {
   category     String    @default("personal")
   reminderDate DateTime?
   pinned       Boolean   @default(false)
+  tags         String    @default("[]")
+  actions      String    @default("[]")
   userId       String
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt    DateTime  @default(now())

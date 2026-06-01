@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Note, NoteInput } from '~/types'
+import type { Note, NoteAction, NoteInput } from '~/types'
 
 const { user, logout } = useAuth()
 const { notes, loading, fetchNotes, createNote, updateNote, deleteNote } = useNotes()
@@ -9,6 +9,8 @@ const editorOpen = ref(false)
 const editingNote = ref<Note | null>(null)
 const saving = ref(false)
 const error = ref('')
+const notesPerPage = 6
+const visibleLimit = ref(notesPerPage)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 if (user.value) {
@@ -22,6 +24,12 @@ const upcomingReminders = computed(() =>
     .slice(0, 5),
 )
 
+const visibleNotes = computed(() => notes.value.slice(0, visibleLimit.value))
+const hiddenNotesCount = computed(() => Math.max(notes.value.length - visibleNotes.value.length, 0))
+const notesProgress = computed(() => (
+  notes.value.length ? Math.round((visibleNotes.value.length / notes.value.length) * 100) : 0
+))
+
 watch(
   search,
   (value) => {
@@ -30,10 +38,19 @@ watch(
     }
 
     searchTimer = setTimeout(async () => {
+      visibleLimit.value = notesPerPage
       await fetchNotes(value)
     }, 250)
   },
 )
+
+function showMoreNotes() {
+  visibleLimit.value += notesPerPage
+}
+
+function collapseNotes() {
+  visibleLimit.value = notesPerPage
+}
 
 function openCreate() {
   editingNote.value = null
@@ -47,6 +64,14 @@ function openEdit(note: Note) {
   error.value = ''
 }
 
+function openRelated(id: string) {
+  const note = notes.value.find((candidate) => candidate.id === id)
+
+  if (note) {
+    openEdit(note)
+  }
+}
+
 async function saveNote(payload: NoteInput) {
   saving.value = true
   error.value = ''
@@ -58,6 +83,7 @@ async function saveNote(payload: NoteInput) {
       await createNote(payload)
     }
 
+    await fetchNotes(search.value)
     editorOpen.value = false
     editingNote.value = null
   } catch (eventError) {
@@ -82,11 +108,44 @@ async function togglePin(note: Note) {
     category: note.category,
     reminderDate: note.reminderDate,
     pinned: !note.pinned,
+    actions: note.actions,
+  })
+}
+
+async function toggleAction(note: Note, selectedAction: NoteAction) {
+  await updateNote(note.id, {
+    title: note.title,
+    content: note.content,
+    category: note.category,
+    reminderDate: note.reminderDate,
+    pinned: note.pinned,
+    actions: note.actions.map((action) => (
+      action.id === selectedAction.id ? { ...action, completed: !action.completed } : action
+    )),
   })
 }
 
 function formatReminder(value: string) {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function notesWord(count: number) {
+  const lastTwoDigits = count % 100
+  const lastDigit = count % 10
+
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+    return 'заметок'
+  }
+
+  if (lastDigit === 1) {
+    return 'заметка'
+  }
+
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return 'заметки'
+  }
+
+  return 'заметок'
 }
 
 function getErrorMessage(eventError: unknown) {
@@ -131,6 +190,14 @@ function getErrorMessage(eventError: unknown) {
 
       <div class="grid gap-6 lg:grid-cols-[1fr_22rem]">
         <section>
+          <div v-if="notes.length && !loading" class="mb-4 flex items-end justify-between gap-4 px-1">
+            <div>
+              <p class="text-xs font-black uppercase tracking-[0.16em] text-orange-500">Коллекция</p>
+              <h2 class="mt-1 text-xl font-black text-stone-900">Заметки</h2>
+            </div>
+            <p class="text-sm font-semibold text-stone-400">{{ notes.length }} {{ notesWord(notes.length) }}</p>
+          </div>
+
           <div v-if="loading" class="rounded-3xl border border-stone-200 bg-white p-8 text-center text-sm font-semibold text-stone-500">
             Загрузка заметок...
           </div>
@@ -142,16 +209,40 @@ function getErrorMessage(eventError: unknown) {
             tag="div"
           >
             <NoteCard
-              v-for="note in notes"
+              v-for="note in visibleNotes"
               :key="note.id"
               :note="note"
               @delete="removeNote"
               @edit="openEdit"
+              @open-related="openRelated"
               @toggle-pin="togglePin"
+              @toggle-action="toggleAction"
             />
           </TransitionGroup>
 
-          <div v-else class="rounded-[2rem] border border-dashed border-orange-200 bg-white p-10 text-center">
+          <div
+            v-if="notes.length > notesPerPage && !loading"
+            class="mt-5 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+          >
+            <div class="h-1 bg-stone-100">
+              <div class="h-full rounded-full bg-gradient-to-r from-orange-300 to-orange-500 transition-all duration-500" :style="{ width: `${notesProgress}%` }" />
+            </div>
+            <div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p class="text-sm font-semibold text-stone-500">
+                Показано <span class="text-stone-900">{{ visibleNotes.length }}</span> из {{ notes.length }}
+              </p>
+              <div class="flex gap-2">
+                <button v-if="visibleLimit > notesPerPage" class="btn-ghost px-4 py-2 text-xs" type="button" @click="collapseNotes">
+                  Свернуть
+                </button>
+                <button v-if="hiddenNotesCount" class="btn-primary px-4 py-2 text-xs" type="button" @click="showMoreNotes">
+                  Показать еще <span class="ml-1 opacity-60">+{{ Math.min(hiddenNotesCount, notesPerPage) }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!loading && !notes.length" class="rounded-[2rem] border border-dashed border-orange-200 bg-white p-10 text-center">
             <h2 class="text-xl font-black text-stone-900">Пока нет заметок</h2>
             <p class="mt-2 text-sm text-stone-500">
               {{ search ? 'Попробуйте изменить поисковый запрос.' : 'Создайте первую заметку и добавьте напоминание.' }}

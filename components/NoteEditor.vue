@@ -89,6 +89,9 @@ function toDatetimeLocal(value: string | null) {
     <div>
       <label class="mb-2 block text-sm font-semibold text-stone-700" for="note-content">Содержание</label>
       <textarea id="note-content" v-model="form.content" class="field min-h-36 resize-y" placeholder="Текст заметки" />
+      <p class="mt-2 text-xs leading-5 text-stone-500">
+        Начните отдельную строку с действия, например: «Забрать посылку» или «- [ ] Отправить письмо». После сохранения появится чекбокс.
+      </p>
     </div>
 
     <div>

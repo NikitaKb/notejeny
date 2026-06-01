@@ -1,5 +1,6 @@
 import { prisma } from '../../utils/prisma'
 import { requireUser } from '../../utils/auth'
+import { serializeNote } from '../../utils/smartNotes'
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
@@ -14,6 +15,7 @@ export default defineEventHandler(async (event) => {
             OR: [
               { title: { contains: search } },
               { content: { contains: search } },
+              { tags: { contains: search } },
             ],
           }
         : {}),
@@ -21,5 +23,5 @@ export default defineEventHandler(async (event) => {
     orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
   })
 
-  return { notes }
+  return { notes: notes.map((note) => serializeNote(note, notes)) }
 })

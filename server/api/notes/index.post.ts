@@ -1,6 +1,7 @@
 import { prisma } from '../../utils/prisma'
 import { requireUser } from '../../utils/auth'
 import { noteCategory, optionalDate, requiredString } from '../../utils/validation'
+import { analyzeNote, serializeNote } from '../../utils/smartNotes'
 
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event)
@@ -10,6 +11,7 @@ export default defineEventHandler(async (event) => {
   const category = noteCategory(body.category)
   const reminderDate = optionalDate(body.reminderDate)
   const pinned = Boolean(body.pinned)
+  const smartFields = analyzeNote(title, content)
 
   if (!title) {
     throw createError({ statusCode: 400, statusMessage: 'Добавьте заголовок заметки' })
@@ -22,9 +24,11 @@ export default defineEventHandler(async (event) => {
       category,
       reminderDate,
       pinned,
+      ...smartFields,
       userId: user.id,
     },
   })
 
-  return { note }
+  const notes = await prisma.note.findMany({ where: { userId: user.id } })
+  return { note: serializeNote(note, notes) }
 })

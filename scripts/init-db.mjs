@@ -15,10 +15,18 @@ for (const statement of sql.split(';').map((item) => item.trim()).filter(Boolean
 }
 
 const columns = await prisma.$queryRawUnsafe('PRAGMA table_info("Note")')
-const hasCategory = Array.isArray(columns) && columns.some((column) => column.name === 'category')
+const noteColumns = [
+  ['category', 'TEXT NOT NULL DEFAULT \'personal\''],
+  ['tags', 'TEXT NOT NULL DEFAULT \'[]\''],
+  ['actions', 'TEXT NOT NULL DEFAULT \'[]\''],
+]
 
-if (!hasCategory) {
-  await prisma.$executeRawUnsafe('ALTER TABLE "Note" ADD COLUMN "category" TEXT NOT NULL DEFAULT \'personal\'')
+for (const [name, definition] of noteColumns) {
+  const hasColumn = Array.isArray(columns) && columns.some((column) => column.name === name)
+
+  if (!hasColumn) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Note" ADD COLUMN "${name}" ${definition}`)
+  }
 }
 
 await prisma.$disconnect()
